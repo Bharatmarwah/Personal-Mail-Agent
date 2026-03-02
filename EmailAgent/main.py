@@ -7,83 +7,57 @@ import httpx
 import logging
 from typing import Optional, Dict, Any
 
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Personal Mail Agent",
-    description="AI-powered email agent that processes natural language requests and sends emails intelligently",
-    version="1.0.0"
+    version="2.0.0",
+    credits="Bharat Marwah"
 )
 
 
 class Message(BaseModel):
-    email: str = Field(..., description="User's email address")
-    content: str = Field(..., description="User's request or message")
-    words: int = Field(default=200, description="Maximum response length in words")
-
-
-class EmailResponse(BaseModel):
-    status: str
-    service_response: Optional[Dict[str, Any]] = None
+    email: str = Field(..., description="Recipient email")
+    content: str = Field(..., description="What the email should be about")
+    words: int = Field(default=150, description="Minimum word count")
 
 
 class ChatResponse(BaseModel):
-    reply: Optional[str] = None
     status: Optional[str] = None
     service_response: Optional[Dict[str, Any]] = None
 
 
-# Initialize Gemini LLM
-try:
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        temperature=0.7,
-        max_output_tokens=1024,
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
-    )
-    logger.info("Gemini LLM initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize Gemini LLM: {e}")
-    raise
-
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "send_email",
-            "description": "Send an email to the specified recipient with subject and body.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "email": {
-                        "type": "string",
-                        "description": "Recipient's email address"
-                    },
-                    "subject": {
-                        "type": "string",
-                        "description": "Email subject line"
-                    },
-                    "body": {
-                        "type": "string",
-                        "description": "Email body content"
-                    }
-                },
-                "required": ["email", "subject", "body"]
-            }
-        }
-    }
-]
+def extract_text(resp):
+    content = resp.content
+    if isinstance(content, list):
+        return " ".join(part.get("text", "") for part in content)
+    return content
 
 
-async def call_email_service(to: str, subject: str, body: str) -> Dict[str, Any]:
+def word_count(text: str):
+    return len(text.split())
 
+
+
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    temperature=0.8,
+    max_output_tokens=2048,
+    google_api_key=os.getenv("GOOGLE_API_KEY"),
+)
+
+logger.info("Gemini initialized")
+
+
+
+async def call_email_service(to: str, subject: str, body: str):
 
     mail_service_url = os.getenv("MAIL_SERVICE_URL", "http://localhost:8080")
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            logger.info(f"Calling email service for recipient: {to}")
             response = await client.post(
                 f"{mail_service_url}/api/email",
                 json={
@@ -95,110 +69,78 @@ async def call_email_service(to: str, subject: str, body: str) -> Dict[str, Any]
 
             response.raise_for_status()
 
-            logger.info(f"Email sent successfully to {to}")
+            # Avoid JSON parsing error if empty
+            if response.content:
+                try:
+                    data = response.json()
+                except:
+                    data = response.text
+            else:
+                data = "Email sent successfully"
+
             return {
                 "success": True,
-                "data": response.json()
+                "data": data
             }
 
-        except httpx.HTTPStatusError as exc:
-            error_msg = f"HTTP error: {exc.response.status_code}"
-            logger.error(error_msg)
+        except Exception as e:
             return {
                 "success": False,
-                "error": error_msg,
-                "details": exc.response.text
+                "error": str(e)
             }
 
-        except httpx.RequestError as exc:
-            error_msg = "Spring service unreachable"
-            logger.error(f"{error_msg}: {exc}")
-            return {
-                "success": False,
-                "error": error_msg,
-                "details": str(exc)
-            }
-
-        except Exception as exc:
-            error_msg = "Unexpected error"
-            logger.error(f"{error_msg}: {exc}")
-            return {
-                "success": False,
-                "error": error_msg,
-                "details": str(exc)
-            }
-
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(message: Message):
 
-    logger.info(f"Processing chat message from {message.email}")
+    logger.info(f"Generating email for {message.email}")
 
-    user_prompt = f"""You are an intelligent email assistant. Process the following user request regarding email communication.
+    base_prompt = f"""
+You are a professional email writer.
 
-User Email: {message.email}
-User Request: {message.content}
-Response Limit: {message.words} words maximum
+The sender's name is Bharat.
+The email should be written as if Bharat is sending it.
 
-Guidelines:
-1. Carefully analyze what the user is asking for
-2. If the user explicitly wants to send an email, use the send_email tool with an appropriate subject and body
-3. Only use the tool when the intent to send an email is clear and unambiguous
-4. If no email is needed, provide a helpful conversational response
-5. Keep responses professional and concise
-6. Do not make assumptions about email content - ask clarifying questions if needed
+Email Topic: {message.content}
+
+Requirements:
+- Minimum {message.words} words
+- Include greeting
+- End the email with:
+
+Warm regards,
+Bharat    
 """
-
+# add your name in the end
     try:
-        response = llm.invoke(
-            [HumanMessage(content=user_prompt)],
-            tools=tools
+
+        response = llm.invoke([HumanMessage(content=base_prompt)])
+        email_body = extract_text(response)
+
+        if word_count(email_body) < message.words:
+            logger.info("Regenerating due to short length")
+
+            stronger_prompt = base_prompt + "\nThe previous response was too short. Expand significantly."
+
+            response = llm.invoke([HumanMessage(content=stronger_prompt)])
+            email_body = extract_text(response)
+
+        subject = "Regarding: " + message.content[:50]
+
+        result = await call_email_service(
+            to=message.email,
+            subject=subject,
+            body=email_body
         )
-        if response.tool_calls:
-            tool_call = response.tool_calls[0]
-            tool_name = tool_call["name"]
-            tool_args = tool_call["args"]
 
-            if tool_name == "send_email":
-                logger.info(f"Agent decided to send email to {tool_args.get('email')}")
-                result = await call_email_service(
-                    to=tool_args["email"],
-                    subject=tool_args["subject"],
-                    body=tool_args["body"]
-                )
-                return ChatResponse(
-                    status="Email Sent",
-                    service_response=result
-                )
-
-
-        logger.info("Agent provided conversational response")
-        return ChatResponse(reply=response.content)
+        return ChatResponse(
+            status="Email Sent",
+            service_response=result
+        )
 
     except Exception as e:
-        logger.error(f"Error processing chat: {e}")
-        return ChatResponse(reply=f"Error processing your request: {str(e)}")
-
-
-@app.get("/")
-async def root():
-    return {
-        "message": "Personal Mail Agent API",
-        "version": "1.0.0",
-        "endpoints": {
-            "chat": "POST /chat",
-            "health": "GET /health",
-            "docs": "/docs",
-            "redoc": "/redoc"
-        }
-    }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        logger.error(f"Agent error: {e}")
+        return ChatResponse(
+            status="Error"
+        )
