@@ -1,0 +1,151 @@
+# Git Ignore File for Personal Mail Agent
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+*.sublime-workspace
+*.sublime-project
+
+# Java/Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+.classpath
+.project
+.settings/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+ENV/
+env/
+agentenv/
+.venv
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# OS Files
+Thumbs.db
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build Files
+dist/
+build/
+
+# Temp Files
+tmp/
+temp/
+*.tmp
+
+# IDE Cache
+*.cache
+
+# SSL Certificates (Keep examples, ignore real ones)
+!*.pem.example
+!*.crt.example
+*.pem
+*.crt
+*.key
+keystore.p12
+
+# Database Files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup Files
+*.bak
+*.backup
+*.swp
+*~
+
+# OS temp files
+.AppleDouble
+.LSOverride
+._*
+
+# Private keys and secrets
+private/
+secrets/
+.ssh/
+
+# Package lock files (optional - depends on team preference)
+# package-lock.json
+# yarn.lock
+# poetry.lock
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Pyre type checker
+.pyre/
+
+# Custom project-specific ignores
+email_archive/
+attachments/
+*.eml
+
